@@ -1,0 +1,177 @@
+---
+title: "AssignmentMachineLearning"
+author: "WickyDonkey"
+date: "Februari 1st 2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache=TRUE)
+```
+
+## Executive summary
+
+This report contains the result of the Coursera peer-assignement of the Practical Machine Learning course. 
+In this assignment the health exercise data is analysed to determine a model how well the persons investigated do their exercise.
+
+The first section loads and cleans the training data of the reference exercices.
+
+In the second section several models are created based on the training data to determine the quality of the excercises. The last model is a combined model with the result of the other models.
+
+Based on the create test set the expected error level is estimated.
+
+The third section estimates the expected quality of the "testing" set with 20 individual measurements, which are also part of the quiz. 
+
+
+## Part 1 - Loading the excercise data and cleaning the data set 
+
+From the data description we get the following information about the "classe" (quality of the exercise):
+
+(Class A) exactly according to the specification
+
+(Class B) throwing the elbows to the front
+
+(Class C) lifting the dumbbell only halfway
+
+(Class D) lowering the dumbbell only halfway
+
+(Class E) throwing the hips to the front
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# load data
+library(ggplot2)
+library(caret)
+library(dplyr)
+library(rattle)
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","pml-training.csv")
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","pml-testing.csv")
+
+training <- read.csv("pml-training.csv",na.strings = c("NA","NaN","","#DIV/0!"))
+testing <- read.csv("pml-testing.csv",na.strings = c("NA","NaN","","#DIV/0!"))
+
+# summary(training)
+head(names(training),7)
+
+```
+
+The summary shows that the first 7 columns are not relevant. 
+
+Further a lot of columns have a lot of NA values. These columns are removed from the training set.
+
+```{r}
+training1 <- training[,-(1:7)]
+na <- apply(training1,2,is.na)
+nna <- apply(na,2,sum)
+selectnonna <- nna == 0
+training1 <- training1[,selectnonna]
+```
+
+## Part 2 - Model the excercise quality
+
+Several models are created based on the training data to determine the quality of the excercises.
+
+To enable training and validation of the model the original training data is split into 75% training data and 25% validation data.
+
+```{r}
+# split the training set into train and validate
+inTrain <- createDataPartition(y=training1$classe, p=0.75, list=FALSE)
+training2 <- training1[inTrain,]
+testing2 <- training1[-inTrain,]
+dim(training2)
+dim(testing2)
+```
+
+The first model is the standard regression tree (rpart)
+
+```{r}
+# Regression tree
+model_rpart <- train(classe ~.,data=training2,method="rpart")
+# print(model_rpart$finalModel)
+fancyRpartPlot(model_rpart$finalModel)
+```
+
+Afterwards the other models are created: Bagging trees (bag), Random forest trees (rf), Boosting trees (gbm)
+
+```{r bag, echo=FALSE, message=FALSE, warning=FALSE}
+# Bagging trees
+model_bag <- train(classe ~.,data=training2,method="treebag")
+print(model_bag$finalModel)
+```
+
+```{r rf,echo=FALSE, message=FALSE, warning=FALSE}
+# Random forest trees
+model_rf <- train(classe ~.,data=training2,method="rf")
+print(model_rf$finalModel)
+```
+
+```{r boost, echo=FALSE, message=FALSE, warning=FALSE}
+# Boosting trees
+model_gbm <- train(classe ~.,data=training2,method="gbm",verbose=FALSE)
+print(model_gbm$finalModel)
+```
+
+```{r nb, echo=FALSE, message=FALSE, warning=FALSE}
+# Naive Bayes trees
+#model_nb <- train(classe ~.,data=training2,method="nb",verbose=FALSE)
+#print(model_nb$finalModel)
+```
+
+The last model is a combined model with the result of the other models.
+First the predicted values for each model are calculated, afterwards the predicted combined value is calculated.
+
+```{r predict}
+# predict
+pred_rpart <- predict(model_rpart,testing2)
+pred_bag <- predict(model_bag,testing2)
+pred_rf <- predict(model_rf,testing2)
+pred_gbm <- predict(model_gbm,testing2)
+#pred_nb <- predict(model_nb,testing2)
+
+predDF <- data.frame(pred_rpart,pred_bag,pred_rf,pred_gbm, classe=testing2$classe)
+model_all <- train(classe ~., data=predDF)
+pred_all <- predict(model_all,predDF)
+```
+
+Based on the create test set the expected error levels are estimated.
+
+```{r expected errror levels}
+print("rpart")
+sum(pred_rpart==predDF$classe) / 4904
+print("bag")
+sum(pred_bag==predDF$classe) / 4904
+print("rf")
+sum(pred_rf==predDF$classe) / 4904
+print("gbm")
+sum(pred_gbm==predDF$classe) / 4904
+#print("nb")
+#sum(pred_nb==predDF$classe) / 4904
+print("combined")
+sum(pred_all==predDF$classe) / 4904
+```
+
+Conclusion: the combined set gives the best result. This set is also used for the final quiz.
+
+## Part 3 - The quiz based on the "testing" set
+
+A set of 20 excercises has been downloaded as part of this assignment. These excercises are run with the combined model
+
+```{r quiz}
+# calculate the excercise quality of the "testing" set
+
+pred_t_rpart <- predict(model_rpart,testing)
+pred_t_bag <- predict(model_bag,testing)
+pred_t_rf <- predict(model_rf,testing)
+pred_t_gbm <- predict(model_gbm,testing)
+#pred_t_nb <- predict(model_nb,testing)
+pred_t_DF <- data.frame(pred_rpart=pred_t_rpart,pred_bag=pred_t_bag,pred_rf=pred_t_rf,pred_gbm=pred_t_gbm)
+
+pred_t_all <- predict(model_all,pred_t_DF)
+print(pred_t_all)
+```
+
+The results have been checked in the Coursera quiz and are correct
